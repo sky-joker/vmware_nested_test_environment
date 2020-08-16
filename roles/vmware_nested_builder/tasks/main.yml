@@ -1,0 +1,12 @@
+---
+- name: "Include tasks from init-environment.yml"
+  include_tasks: init_environment.yml
+
+- name: "Include tasks from esxi-operation.yml"
+  include_tasks: esxi_operation.yml
+
+- name: "Include tasks from vcenter-operation.yml"
+  include_tasks: vcenter_operation.yml
+
+- name: "Include tasks from vcenter_settings"
+  include_tasks: vcenter_settings.yml

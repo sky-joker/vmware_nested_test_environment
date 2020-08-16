@@ -1,0 +1,29 @@
+---
+- name: "Create Datacenter"
+  vmware_datacenter:
+    hostname: "{{ networks.after_ip }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: no
+    datacenter_name: "{{ test_datacenter_name }}"
+    state: present
+
+- name: "Add ESXi host to VCSA"
+  vmware_host:
+    hostname: "{{ networks.after_ip }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: no
+    datacenter: "{{ test_datacenter_name }}"
+    folder: "/{{ datacenter }}/host"
+    esxi_hostname: "{{ item.1.ip }}"
+    esxi_username: "{{ esxi_guest_user }}"
+    esxi_password: "{{ esxi_guest_password }}"
+    state: present
+  with_subelements:
+    - "{{ esxi_hosts }}"
+    - networks
+  when:
+    - "'ip' in item.1"
+    - "'vmk' in item.1"
+    - add_esxi_hosts is sameas true

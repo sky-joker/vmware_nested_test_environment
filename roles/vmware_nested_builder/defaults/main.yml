@@ -1,0 +1,57 @@
+---
+# common params
+vcenter_hostname: vcenter server
+vcenter_username: administrator@vsphere.local
+vcenter_password: password
+datacenter: datacenter name
+cluster: cluster name
+folder: folder
+
+# ESXi params
+esxi_template: esxi template name
+esxi_snapshot: esxi snapshot name
+esxi_guest_user: root
+esxi_guest_password: password
+#datastore: # This datastore param require if you want to use VCSA version 6.7 or less
+#  name: datastore1
+#  vmfs_device_name: "mpx.vmhba0:C0:T0:L0"
+esxi_hosts:
+  - name: esxi-test01
+    networks:
+      - name: VM Network
+        vmk: vmk0
+        ip: 192.168.1.40
+        netmask: 255.255.255.0
+        gateway: 192.168.1.254
+      - name: VM Network
+      - name: VM Network
+  - name: esxi-test02
+    networks:
+      - name: VM Network
+        vmk: vmk0
+        ip: 192.168.1.41
+        netmask: 255.255.255.0
+        gateway: 192.168.1.254
+      - name: VM Network
+      - name: VM Network
+
+# VCSA params
+vcenter_template: vcenter template name
+vcenter_name: test vcenter name
+vcenter_snapshot: vcenter snapshot name
+vcenter_guest_user: root
+vcenter_guest_password: vcenter guest password
+vcenter_network:
+  ip: 192.168.10.200
+  gateway: 192.168.10.1
+
+# If change the hostname for VCSA, remove below comment out and change to the proper value
+# The hostname is required name resolution from DNS
+# If can't name resolution, set IP address
+after_vcenter_hostname: 192.168.10.200
+unique_id: 50
+
+
+# The following params need the test VCSA setup after ESXi and VCSA deploy.
+test_datacenter_name: DC
+add_esxi_hosts: true

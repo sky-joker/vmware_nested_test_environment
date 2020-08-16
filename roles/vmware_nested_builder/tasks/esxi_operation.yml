@@ -1,0 +1,205 @@
+---
+- name: "Clone VM from an ESXi template"
+  vmware_guest:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: no
+    datacenter: "{{ datacenter }}"
+    cluster: "{{ cluster }}"
+    folder: "{{ folder }}"
+    template: "{{ esxi_template }}"
+    name: "{{ item.name }}"
+    linked_clone: yes
+    snapshot_src: "{{ esxi_snapshot }}"
+    hardware:
+      num_cpus: "{{ item.num_cpus | default(4) }}"
+      num_cpu_cores_per_socket: "{{ item.num_cpu_cores_per_socket | default(1) }}"
+      memory_mb: "{{ item.memory_mb | default(4096) }}"
+      nested_virt: yes
+    networks: "{{ network_data }}"
+    state: poweredon
+  vars:
+    network_data: >-
+      {{ item.networks | map('dict2items')
+        | map('selectattr', 'key', 'ne', 'vmk')
+        | map('selectattr', 'key', 'ne', 'ip')
+        | map('selectattr', 'key', 'ne', 'netmask')
+        | map('selectattr', 'key', 'ne', 'gateway')
+        | map('list')
+        | list
+        | map('items2dict')
+        | list
+      }}
+  loop: "{{ esxi_hosts }}"
+
+- name: "Connect network of ESXi"
+  vmware_guest_network_connect:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: no
+    name: "{{ item.name }}"
+  loop: "{{ esxi_hosts }}"
+
+- name: "Wait until started vmware tools for ESXi"
+  vmware_guest_tools_wait:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: no
+    folder: "{{ folder }}"
+    name: "{{ item.name }}"
+  loop: "{{ esxi_hosts }}"
+
+# https://kb.vmware.com/s/article/1031111?lang=en_us
+- name: "Remove VMKernel(purpose is to reset VMkernel mac address)"
+  vmware_vm_shell:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: no
+    datacenter: "{{ datacenter }}"
+    cluster: "{{ cluster }}"
+    folder: "{{ folder }}"
+    vm_id: "{{ item.name }}"
+    vm_username: "{{ esxi_guest_user }}"
+    vm_password: "{{ esxi_guest_password }}"
+    vm_shell: /bin/esxcfg-vmknic
+    vm_shell_args: "-d 'Management Network'"
+    wait_for_process: yes
+  loop: "{{ esxi_hosts }}"
+
+- name: "Add a new VMKernel"
+  vmware_vm_shell:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: no
+    datacenter: "{{ datacenter }}"
+    cluster: "{{ cluster }}"
+    folder: "{{ folder }}"
+    vm_id: "{{ item.name }}"
+    vm_username: "{{ esxi_guest_user }}"
+    vm_password: "{{ esxi_guest_password }}"
+    vm_shell: /bin/esxcfg-vmknic
+    vm_shell_args: "-a -i DHCP -p 'Management Network'"
+    wait_for_process: yes
+  loop: "{{ esxi_hosts }}"
+
+- name: "Set management ip for ESXi(static)"
+  vmware_vm_shell:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: no
+    datacenter: "{{ datacenter }}"
+    cluster: "{{ cluster }}"
+    folder: "{{ folder }}"
+    vm_id: "{{ item.0.name }}"
+    vm_username: "{{ esxi_guest_user }}"
+    vm_password: "{{ esxi_guest_password }}"
+    vm_shell: /bin/esxcli
+    vm_shell_args: "network ip interface ipv4 set -i {{ item.1.vmk }} -I {{ item.1.ip }} -N {{ item.1.netmask }} -t static -g {{ item.1.gateway }}"
+    wait_for_process: yes
+  with_subelements:
+    - "{{ esxi_hosts }}"
+    - networks
+  when:
+    - "'ip' in item.1"
+    - "'netmask' in item.1"
+    - "'gateway' in item.1"
+    - "'vmk' in item.1"
+
+- name: "Set default gateway for ESXi(static)"
+  vmware_vm_shell:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: no
+    datacenter: "{{ datacenter }}"
+    cluster: "{{ cluster }}"
+    folder: "{{ folder }}"
+    vm_id: "{{ item.0.name }}"
+    vm_username: "{{ esxi_guest_user }}"
+    vm_password: "{{ esxi_guest_password }}"
+    vm_shell: /bin/esxcli
+    vm_shell_args: "network ip route ipv4 add --gateway {{ item.1.gateway }} --network 0.0.0.0"
+    wait_for_process: yes
+  with_subelements:
+    - "{{ esxi_hosts }}"
+    - networks
+  when:
+    - "'ip' in item.1"
+    - "'netmask' in item.1"
+    - "'gateway' in item.1"
+    - "'vmk' in item.1"
+
+- name: "Enable promiscuous of vSiwtch security"
+  vmware_vm_shell:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: no
+    datacenter: "{{ datacenter }}"
+    cluster: "{{ cluster }}"
+    folder: "{{ folder }}"
+    vm_id: "{{ item.name }}"
+    vm_username: "{{ esxi_guest_user }}"
+    vm_password: "{{ esxi_guest_password }}"
+    vm_shell: /bin/esxcli
+    vm_shell_args: "network vswitch standard policy security set -p true -v vSwitch0"
+    wait_for_process: yes
+  loop: "{{ esxi_hosts }}"
+
+- name: "Enable forged-transmits of vSiwtch security"
+  vmware_vm_shell:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: no
+    datacenter: "{{ datacenter }}"
+    cluster: "{{ cluster }}"
+    folder: "{{ folder }}"
+    vm_id: "{{ item.name }}"
+    vm_username: "{{ esxi_guest_user }}"
+    vm_password: "{{ esxi_guest_password }}"
+    vm_shell: /bin/esxcli
+    vm_shell_args: "network vswitch standard policy security set -f true -v vSwitch0"
+    wait_for_process: yes
+  loop: "{{ esxi_hosts }}"
+
+- when:
+    - datastore is defined
+  block:
+    - name: "Remove datastore(purpose is to change UUID for datastore)"
+      vmware_host_datastore:
+        hostname: "{{ item.1.ip }}"
+        username: "{{ esxi_guest_user }}"
+        password: "{{ esxi_guest_password }}"
+        validate_certs: no
+        datastore_name: "{{ datastore.name }}"
+        state: absent
+      with_subelements:
+        - "{{ esxi_hosts }}"
+        - networks
+      when:
+        - "'ip' in item.1"
+        - "'vmk' in item.1"
+
+    - name: "Add datastore(purpose is to change UUID for datastore)"
+      vmware_host_datastore:
+        hostname: "{{ item.1.ip }}"
+        username: "{{ esxi_guest_user }}"
+        password: "{{ esxi_guest_password }}"
+        validate_certs: no
+        datastore_name: "{{ datastore.name }}"
+        datastore_type: vmfs
+        vmfs_device_name: "{{ datastore.vmfs_device_name }}" 
+        state: present
+      with_subelements:
+        - "{{ esxi_hosts }}"
+        - networks
+      when:
+        - "'ip' in item.1"
+        - "'vmk' in item.1"

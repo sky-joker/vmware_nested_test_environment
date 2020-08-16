@@ -1,0 +1,14 @@
+namespace: sky_joker
+name: vmware_nested_test_environment
+version: 0.0.1
+readme: README.md
+authors:
+- sky-joker (@sky-joker)
+description: 
+license_file: LICENSE
+tags:
+  - vmware
+repository: hhttps://github.com/sky-joker/vmware_nested_test_environment.git
+documentation: hhttps://github.com/sky-joker/vmware_nested_test_environment.git
+homepage: hhttps://github.com/sky-joker/vmware_nested_test_environment.git
+issues: hhttps://github.com/sky-joker/vmware_nested_test_environment.git

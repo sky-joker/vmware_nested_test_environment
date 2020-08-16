@@ -1,0 +1,261 @@
+---
+- name: "Clone VM from a template"
+  vmware_guest:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: no
+    datacenter: "{{ datacenter }}"
+    cluster: "{{ cluster }}"
+    folder: "{{ folder }}"
+    template: "{{ vcenter_template }}"
+    name: "{{ vcenter_name }}"
+    linked_clone: yes
+    snapshot_src: "{{ vcenter_snapshot }}"
+    state: poweredon
+
+- name: "Wait until started vmware tools for VCSA"
+  vmware_guest_tools_wait:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: no
+    folder: "{{ folder }}"
+    name: "{{ vcenter_name }}"
+
+- name: "Wait until succeeded command"
+  vmware_vm_shell:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: no
+    datacenter: "{{ datacenter }}"
+    cluster: "{{ cluster }}"
+    folder: "{{ folder }}"
+    vm_id: "{{ vcenter_name }}"
+    vm_username: "{{ vcenter_guest_user }}"
+    vm_password: "{{ vcenter_guest_password }}"
+    vm_shell: /bin/ls
+    wait_for_process: yes
+  register: command_result
+  until: command_result.exit_code == 0
+  retries: 60
+  delay: 30
+
+- name: "Change management ip for VCSA"
+  vmware_vm_shell:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: no
+    datacenter: "{{ datacenter }}"
+    cluster: "{{ cluster }}"
+    folder: "{{ folder }}"
+    vm_id: "{{ vcenter_name }}"
+    vm_username: "{{ vcenter_guest_user }}"
+    vm_password: "{{ vcenter_guest_password }}"
+    vm_shell: /bin/sed
+    vm_shell_args: "-i 's/Address=.*/Address={{ vcenter_network.ip }}/' /etc/systemd/network/10-eth0.network"
+    wait_for_process: yes
+
+- name: "Change default gateway for VCSA"
+  vmware_vm_shell:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: no
+    datacenter: "{{ datacenter }}"
+    cluster: "{{ cluster }}"
+    folder: "{{ folder }}"
+    vm_id: "{{ vcenter_name }}"
+    vm_username: "{{ vcenter_guest_user }}"
+    vm_password: "{{ vcenter_guest_password }}"
+    vm_shell: /bin/sed
+    vm_shell_args: "-i 's/Gateway=.*/Gateway={{ vcenter_network.gateway }}/' /etc/systemd/network/10-eth0.network"
+    wait_for_process: yes
+
+- name: "Check to the changed IP address of VCSA"
+  vmware_vm_shell:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: no
+    datacenter: "{{ datacenter }}"
+    cluster: "{{ cluster }}"
+    folder: "{{ folder }}"
+    vm_id: "{{ vcenter_name }}"
+    vm_username: "{{ vcenter_guest_user }}"
+    vm_password: "{{ vcenter_guest_password }}"
+    vm_shell: /usr/bin/grep
+    vm_shell_args: "'Address={{ vcenter_network.ip }}' /etc/systemd/network/10-eth0.network"
+    wait_for_process: yes
+
+- name: "Check to the changed Gateway address of VCSA"
+  vmware_vm_shell:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: no
+    datacenter: "{{ datacenter }}"
+    cluster: "{{ cluster }}"
+    folder: "{{ folder }}"
+    vm_id: "{{ vcenter_name }}"
+    vm_username: "{{ vcenter_guest_user }}"
+    vm_password: "{{ vcenter_guest_password }}"
+    vm_shell: /usr/bin/grep
+    vm_shell_args: "'Gateway={{ vcenter_network.gateway }}' /etc/systemd/network/10-eth0.network"
+    wait_for_process: yes
+
+- name: "Reboot VCSA"
+  vmware_guest:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: no
+    datacenter: "{{ datacenter }}"
+    cluster: "{{ cluster }}"
+    folder: "{{ folder }}"
+    name: "{{ vcenter_name }}"
+    state: rebootguest
+
+- name: "Wait until connected success to mob URL"
+  uri:
+    url: "https://{{ vcenter_network.ip }}/mob"
+    validate_certs: no
+    user: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    force_basic_auth: yes
+    status_code: 200
+  register: url_status_result
+  until: url_status_result.status == 200
+  retries: 60
+  delay: 30
+
+- name: "Get VCSA extenstions(purpose is to check vcsa started successfully)"
+  vcenter_extension_info:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: no
+  register: vcenter_extension_result
+  until: vcenter_extension_result.extension_info | length >= 1
+  retries: 60
+  delay: 30
+
+- name: "Add ESXi name to hosts"
+  vmware_vm_shell:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    validate_certs: no
+    datacenter: "{{ datacenter }}"
+    cluster: "{{ cluster }}"
+    folder: "{{ folder }}"
+    vm_id: "{{ vcenter_name }}"
+    vm_username: "{{ vcenter_guest_user }}"
+    vm_password: "{{ vcenter_guest_password }}"
+    vm_shell: /usr/bin/echo
+    vm_shell_args: "'{{ item.1.ip }} {{ item.0.name }}' >> /etc/hosts"
+    wait_for_process: yes
+  with_subelements:
+    - "{{ esxi_hosts }}"
+    - networks
+  when:
+    - "'ip' in item.1"
+    - "'vmk' in item.1"
+
+- when: after_vcenter_hostname is defined
+  block:
+    - name: "Change hostname for VCSA"
+      vmware_vcenter_settings:
+        hostname: "{{ vcenter_network.ip }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: no
+        runtime_settings:
+          unique_id: "{{ unique_id }}"
+          managed_address: "{{ vcenter_network.ip }}"
+          vcenter_server_name: "{{ after_vcenter_hostname }}"
+        mail:
+          server: ""
+          sender: ""
+
+    - name: "Change hostname for VCSA guest"
+      vmware_vm_shell:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: no
+        datacenter: "{{ datacenter }}"
+        cluster: "{{ cluster }}"
+        folder: "{{ folder }}"
+        vm_id: "{{ vcenter_name }}"
+        vm_username: "{{ vcenter_guest_user }}"
+        vm_password: "{{ vcenter_guest_password }}"
+        vm_shell: /usr/bin/hostnamectl
+        vm_shell_args: "set-hostname {{ after_vcenter_hostname }}"
+        wait_for_process: yes
+
+    - name: "Change the shell for root login"
+      vmware_vm_shell:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: no
+        datacenter: "{{ datacenter }}"
+        cluster: "{{ cluster }}"
+        folder: "{{ folder }}"
+        vm_id: "{{ vcenter_name }}"
+        vm_username: "{{ vcenter_guest_user }}"
+        vm_password: "{{ vcenter_guest_password }}"
+        vm_shell: /usr/bin/chsh
+        vm_shell_args: "-s /bin/bash root"
+        wait_for_process: yes
+
+    - name: "Add a vCenter host for changing SSO config"
+      add_host:
+        hostname: vcenter
+        ansible_host: "{{ after_vcenter_hostname }}"
+        ansible_user: "{{ vcenter_guest_user }}"
+        ansible_password: "{{ esxi_guest_password }}"
+
+    # https://kb.vmware.com/s/article/2147384
+    - name: "Change redirect URL used in SSO"
+      shell: "/usr/bin/python /usr/lib/vmware-sso/bin/updateSSOConfig.py --lb-fqdn={{ after_vcenter_hostname }}"
+      delegate_to: vcenter
+
+    - name: "Reboot VCSA"
+      vmware_guest:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: no
+        datacenter: "{{ datacenter }}"
+        cluster: "{{ cluster }}"
+        folder: "{{ folder }}"
+        name: "{{ vcenter_name }}"
+        state: rebootguest
+
+    - name: "Wait until connected success to mob URL"
+      uri:
+        url: "https://{{ vcenter_network.ip }}/mob"
+        validate_certs: no
+        user: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        force_basic_auth: yes
+        status_code: 200
+      register: url_status_result
+      until: url_status_result.status == 200
+      retries: 60
+      delay: 30
+
+    - name: "Get VCSA extenstions(purpose is to check vcsa started successfully)"
+      vcenter_extension_info:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: no
+      register: vcenter_extension_result
+      until: vcenter_extension_result.extension_info | length >= 1
+      retries: 60
+      delay: 30

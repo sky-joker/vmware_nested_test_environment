@@ -1,5 +1,5 @@
 ---
-- name: force delete esxi from vCenter
+- name: "Force delete esxi from vCenter"
   vmware_guest:
     hostname: "{{ vcenter_hostname }}"
     username: "{{ vcenter_username }}"
@@ -13,7 +13,7 @@
     state: absent
   loop: "{{ esxi_hosts }}"
 
-- name: force delete VCSA from vCenter
+- name: "Force delete VCSA from vCenter"
   vmware_guest:
     hostname: "{{ vcenter_hostname }}"
     username: "{{ vcenter_username }}"

@@ -12,7 +12,7 @@ DOCUMENTATION = r'''
 module: vmware_guest_network_connect
 short_description: Connect network of Virtual Machine.
 description:
-  - This module is to connect networks of Virtual Machine. 
+  - This module is to connect networks of Virtual Machine.
 author:
   - sky-joker (@sky-joker)
 requirements:
@@ -38,7 +38,7 @@ options:
     description:
       - Allows connection when SSL certificates are not valid. Set to C(false) when certificates are not trusted.
     type: bool
-    defualt: True
+    default: True
   name:
     description:
       - The name of the Virtual Machine.
@@ -53,8 +53,11 @@ RETURN = r'''
 '''
 
 from ansible.module_utils.basic import AnsibleModule
-from pyVim.connect import SmartConnect, Disconnect
-from pyVmomi import vim
+try:
+    from pyVim.connect import SmartConnect, Disconnect
+    from pyVmomi import vim
+except ImportError:
+    pass
 import ssl
 import atexit
 
@@ -68,7 +71,7 @@ def main():
             validate_certs=dict(type='bool', default=True),
             name=dict(type='str', required=True),
         ),
-        supports_check_mode = True
+        supports_check_mode=True
     )
 
     hostname = module.params['hostname']

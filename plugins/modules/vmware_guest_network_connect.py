@@ -90,7 +90,7 @@ def main():
                           user=username,
                           pwd=password,
                           sslContext=context)
-    except Exception as e:
+    except Exception:
         module.fail_json(msg="Failed to connect to vCenter Server %s" % hostname)
 
     atexit.register(Disconnect, si)
@@ -117,7 +117,7 @@ def main():
 
                 try:
                     mob.ReconfigVM_Task(spec)
-                except Exception as e:
+                except Exception:
                     module.fail_json(msg="Failed to change a network setting of Virtual Machine: %s" % name)
 
                 module.exit_json(changed=True)
